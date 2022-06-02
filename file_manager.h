@@ -32,6 +32,19 @@ public:
     void ls(bool detail);
     void rm(const char* name);
 
+    /*user type*/
+    int addUser(const char* user_name,const char* pwd);
+    void modifyUserGroup(const char* user_name,const char* group_name);
+    int addGroup(const char* group_name);
+    void changeFileMode(const char* file_name,int user_mode,int group_mode,int else_mode);
+    bool deleteUser(const char* user_name);
+    void changeFileGroup(const char* file_name,const char* group_name);
+    void su(const char* user_name,const char* pwd);
+    void whoAmI();
+
+    // 文件系统启动时的引导程序
+    void boost();
+
 
 };
 

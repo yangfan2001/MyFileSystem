@@ -10,7 +10,7 @@
 class shell{
 public:
     void loop();
-    void shellReact(std::string cmd);
+    bool shellReact(std::string cmd);
 };
 
 #endif //MYFILESYSTEM_SHELL_H

@@ -5,12 +5,60 @@
 # include "file_manager.h"
 # include <string.h>
 # include <stack>
+# include "user.h"
 
 extern FileSystem my_file_system;
 extern Directory present_directory;
 extern OpenFileTable my_open_file_table;
+User present_user;
 FileManager my_file_manager;
 int root_inode_num;//根目录的Inode号，全局变量标志
+
+
+
+
+User getNewUser(int user_id,UserInfo user_info,GroupInfo group_info){
+    User new_usr;
+    new_usr.u_id = user_id;
+    new_usr.g_id = user_info.u_g_id[user_id];
+    strcpy(new_usr.u_name,user_info.u_name[user_id]);
+    strcpy(new_usr.g_name,group_info.g_name[new_usr.g_id]);
+    return new_usr;
+}
+
+int checkUserAuth(Inode inode,string mode) {
+    // 检查当前用户对于此inode的读写权限
+    if (mode == "read") {
+        // 根据用户身份验证读权限
+        if(present_user.u_id == inode.i_uid)// 当前用户为文件所有者
+            return inode.i_permission & Inode::OWNER_R;
+        else if(present_user.g_id == inode.i_gid)// 当前用户为文件同组用户
+            return inode.i_permission & Inode::GROUP_R;
+        else // 为其他用户
+            return inode.i_permission & Inode::ELSE_R;
+
+    }
+    else if (mode == "write") {
+        // 根据用户身份验证写权限
+        if(present_user.u_id == inode.i_uid)// 当前用户为文件所有者
+            return inode.i_permission & Inode::OWNER_W;
+        else if(present_user.g_id == inode.i_gid)// 当前用户为文件同组用户
+            return inode.i_permission & Inode::GROUP_W;
+        else // 为其他用户
+            return inode.i_permission & Inode::ELSE_W;
+    }
+    else if(mode == "delete"){
+        // 根据用户身份验证删除权限 （读+写+可执行）
+        if(present_user.u_id == inode.i_uid)// 当前用户为文件所有者
+            return (inode.i_permission&Inode::OWNER_R)&&(inode.i_permission&Inode::OWNER_W)&&(inode.i_permission&Inode::OWNER_E);
+        else if(present_user.g_id == inode.i_gid)// 当前用户为文件同组用户
+            return (inode.i_permission&Inode::GROUP_R)&&(inode.i_permission&Inode::GROUP_W)&&(inode.i_permission&Inode::GROUP_E);
+        else // 为其他用户
+            return (inode.i_permission&Inode::ELSE_R)&&(inode.i_permission&Inode::ELSE_W)&&(inode.i_permission&Inode::ELSE_E);
+    }
+    return -1;
+
+}
 
 int checkSpace(SuperBlock superBlock){
     if(superBlock.s_nfree<=0||superBlock.s_ninode<=0){
@@ -90,7 +138,16 @@ void FileManager::creatFile(const char* file_name) {
     // 对Inode的数据进行对应的赋值
     new_inode.i_mode = Inode::INODE_FILE;
     // 对用户权限相关进行修改
-    // .... need to be completed
+    new_inode.i_uid = short(present_user.u_id);
+    new_inode.i_gid = short(present_user.g_id);
+
+    new_inode.i_permission  = 0;
+    // 文件所有者具有读写、可执行权限
+    new_inode.i_permission |=(Inode::OWNER_R|Inode::OWNER_W|Inode::OWNER_E);
+    // 同组用户具有读写权限
+    new_inode.i_permission |=(Inode::GROUP_R|Inode::GROUP_W);
+    // 其他用户具有读权限
+    new_inode.i_permission |=(Inode::ELSE_R);
 
     // 当前新的数据写入当前directory,同时更新当前新创建的文件在磁盘中。
     strcpy(present_directory.d_file_name[new_directory_pos],file_name);
@@ -121,6 +178,12 @@ void FileManager::deleteFile(const char *file_name) {
         cout<<"当前目录不存在名为"<<file_name<<"的有效文件"<<endl;
         return;
     }
+    // 对文件的读写权限进行检查
+    // 用户如果要删除文件，那么必须具备对于当前文件的读权限、写权限以及可执行权限
+    if(!checkUserAuth(file_inode,"delete")){
+        cout<<"当前用户不具备对该文件的删除权限"<<endl;
+        return;
+    }
     // 释放文件的BLOCK
     file_inode.free();
     // 释放文件的inode
@@ -142,14 +205,11 @@ int FileManager::openFile(const char* file_name,int mode){
         return -1;
     // 检查文件是否存在当前目录中
     int pos = checkSameName(file_name,"file", false);
-
     if(pos == -1)
         return -1;
 
     // 查看这个文件在不在内存Inode表里面
     int inode_num = present_directory.d_inode_num[pos];
-    // 在则从表里获取，不在那么就读取
-
     // 获取对应文件的Inode
     Inode inode;
     my_file_system.readInode(inode,inode_num);
@@ -168,8 +228,8 @@ int FileManager::openFile(const char* file_name,int mode){
     File* new_file;
     new_file = &my_open_file_table.o_files[new_fd];// 指向对应的文件结构的位置
     new_file->f_count = 1;
-    // 定义用户，现在还没想好
-    // new_file->f_uid =
+    // 当前用户的uid
+    new_file->f_uid = present_user.u_id;
     new_file->f_offset = 0;
     new_file->f_inode_num = inode_num;
     new_file->f_inode = &inode;
@@ -185,10 +245,13 @@ void FileManager::closeFile(int fd){
     int closeSuccess = my_open_file_table.freeFile(fd);
     if(!closeSuccess){
         cout<<"文件关闭失败,不存在fd为:"<<fd<<"的文件"<<endl;
+        return;
     }
-    else{
-        cout<<"文件关闭成功,成功关闭了fd为:"<<fd<<"的文件"<<endl;
+    if(my_open_file_table.o_files[fd].f_uid!=present_user.u_id){
+        cout<<"文件关闭失败，不能关闭其他用户打开的文件"<<endl;
+        return;
     }
+    cout<<"文件关闭成功,成功关闭了fd为:"<<fd<<"的文件"<<endl;
 };
 
 /* 从in_file_name文件里面读length个字节 写到fd对应的文件里面 */
@@ -208,12 +271,12 @@ int FileManager::writeFile(int fd, string in_file_name, int length) {
     int inode_num = file->f_inode_num;
     Inode inode;
     my_file_system.readInode(inode,inode_num);
+
     // 根据inode的检查用户权限
-
-
-
-
-
+    if(!checkUserAuth(inode,"write")){
+        cout<<"当前用户不具有对该文件的写权限"<<endl;
+        return -1;
+    }
 
     // 获取in_file_name的文件内容
     const char * content = my_file_system.readFile(in_file_name,length);
@@ -286,11 +349,11 @@ int FileManager::readFile(int fd,string out_file_name,int length){
     Inode inode;
     my_file_system.readInode(inode,file->f_inode_num);
     // 根据inode的检查权限
-
-
-
-
-
+    // 一个用户需要删除文件 必须具有对这个文件的读写和可执行权限
+    if(!checkUserAuth(inode,"read")){
+        cout<<"当前用户不具有对该文件的读权限"<<endl;
+        return -1;
+    }
     // 首先计算长度
     int read_count = 0; // 读累计的字节数
     int file_offset = file->f_offset;//文件读写指针指向的位置
@@ -400,6 +463,14 @@ void FileManager::createDirectory(const char* directory_name){
     // 对Inode的数据进行对应的赋值
     new_inode.i_addr[0] = new_blk_num;
     new_inode.i_mode = Inode::INODE_DIRECTORY;
+
+    // 所有者具有读写、可执行权限
+    new_inode.i_permission |=(Inode::OWNER_R|Inode::OWNER_W|Inode::OWNER_E);
+    // 同组用户具有读写权限
+    new_inode.i_permission |=(Inode::GROUP_R|Inode::GROUP_W);
+    // 其他用户具有读权限
+    new_inode.i_permission |=(Inode::ELSE_R);
+
     // 当前新的数据写入当前directory,同时更新当前directory在磁盘中。
     strcpy(present_directory.d_file_name[new_directory_pos],directory_name);
     present_directory.d_inode_num[new_directory_pos] = new_inode.i_number;
@@ -415,13 +486,8 @@ void FileManager::createDirectory(const char* directory_name){
     // Inode写回内存
     my_file_system.writeInode(new_inode);
     // 没有涉及对于superBlock的修改，因此不需要写回superBlock
-
 };
 
-// 删了
-void FileManager::deleteDirectory(const char* directory_name){
-
-};
 // cd
 void FileManager::openDirectory(const char* path){
     // 检查路径是否合法
@@ -526,60 +592,6 @@ void FileManager::openDirectory(const char* path){
 
 };
 
-void FileManager::getCurrentDirectory(){
-
-};
-
-
-/* 对系统进行格式化的操作 */
-void FileManager::formatSystem() {
-    my_file_system.FormatDisk();//格式化磁盘
-    // 申请一个盘块
-    int new_blk_num = my_file_system.AllocBlock();
-    // 申请一个Inode
-    Inode root_inode;
-    my_file_system.AllocInode(root_inode);
-    // Inode 初始化操作
-    root_inode.i_mode = Inode::INODE_DIRECTORY;
-    root_inode.i_addr[0] = new_blk_num;//新申请的目录盘块号
-    // Inode 权限和用户部分
-    // ......还没有实现哈
-
-    //创建根目录
-    Directory root;
-    root.inode_num = root_inode.i_number;
-    root_inode_num = root_inode.i_number;//全局变量记录
-    root.parent_inode_num = -1;// -1代表不存在父目录
-    strcpy(root.directory_name,"/");
-    // 当前目录为root
-    present_directory = root;
-    // root 写入磁盘块
-    my_file_system.writeBlock((char*)&present_directory,new_blk_num);
-    // Inode 写入磁盘更新
-    my_file_system.writeInode(root_inode);
-}
-
-/* 展示当前目录INODE节点的文件项 */
-void FileManager::ls(bool detail) {
-    if(detail){
-        for (int i = 0; i <DIRECTORY_SIZE; ++i) {
-            cout<<"Name:"<<"Mode"<<"Size"<<"Alter_time";
-            if(strlen(present_directory.d_file_name[i])){
-                Inode inode;
-                my_file_system.readInode(inode,present_directory.d_inode_num[i]);
-                // 输出文件细节
-            }
-        }
-    }
-    else{
-        for (int i = 0; i <DIRECTORY_SIZE; ++i) {
-            if(strlen(present_directory.d_file_name[i])){
-                cout<<present_directory.d_file_name[i]<<"  ";
-            }
-        }
-        cout<<endl;
-    }
-}
 
 // 显示当前用户所有打开的文件名和文件打开标识符
 void FileManager::showOpenFileList(){
@@ -612,4 +624,380 @@ void FileManager::pwd() {
             cout<<"/";
     }
     cout<<endl;
+}
+
+/* user relevant instruction */
+
+// 向系统中添加一个user
+int FileManager::addUser(const char* user_name,const char* pwd){
+    UserInfo user_info;
+    my_file_system.readBlock((char*)& user_info,USER_INFO_BLK_NUM);
+    // 检查user_name 和 pwd的长度
+    if(strlen(user_name)>USER_NAME_SIZE || strlen(pwd)> USER_PWD_SIZE){
+        cout<<"用户名或密码长度超出限制"<<endl;
+        return -1;
+    }
+    if(user_info.hasUser(user_name)!=-1){
+        cout<<"系统已经存在用户名为"<<user_name<<"的用户"<<endl;
+        return -1;
+    }
+    // 添加用户
+    int user_id = user_info.addUser(user_name,pwd,DEFAULT_USER_GROUP_ID);
+    if(user_id == -1){
+        cout<<"系统用户数量超出限制"<<endl;
+        return -1;
+    }
+    my_file_system.writeBlock((char*)&user_info,USER_INFO_BLK_NUM);
+    return user_id;
+};
+
+// 添加一个Group
+int FileManager::addGroup(const char* group_name){
+    // 先检查当前用户是否为root用户
+    if(strcmp(present_user.u_name,"root")!=0){
+        cout<<"Permission denied,只有root用户才能添加用户组"<<endl;
+        return -1;
+    }
+    // 检查group_name是否合法
+    if(strlen(group_name)>GROUP_NAME_SIZE){
+        cout<<"用户组名称超出限制"<<endl;
+        return -1;
+    }
+    // 添加用户组
+    GroupInfo user_group;
+    my_file_system.readBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+    // 检查是否存在名为group_name的用户组
+    if(user_group.hasGroup(group_name)!=-1){
+        cout<<"已经存在名为"<<group_name<<"的用户组"<<endl;
+        return -1;
+    }
+    // 添加group_name
+    int group_id = user_group.addGroup(group_name);
+    if(group_id == -1){
+        cout<<"添加失败,用户组数量超出系统上线"<<endl;
+    }
+    my_file_system.writeBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+    return group_id;
+}
+
+void FileManager::modifyUserGroup(const char *user_name, const char *group_name) {
+    // 先检查当前用户是否为root用户
+    if(strcmp(present_user.u_name,"root")!=0){
+        cout<<"Permission denied,只有root用户才能更改用户的用户组"<<endl;
+        return;
+    }
+    // 检查输入合法性
+    if(strlen(group_name)>GROUP_NAME_SIZE|| strlen(user_name)>USER_NAME_SIZE){
+        cout<<"用户名或用户组名称长度超出限制"<<endl;
+        return;
+    }
+    // 不能修改root的用户组
+    if(strcmp(user_name,"root")){
+        cout<<"不能修改root用户的用户组"<<endl;
+        return;
+    }
+    // 读出group
+    UserInfo user_info;
+    GroupInfo user_group;
+    my_file_system.readBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+    // 获取group_name对应的ID
+    int group_id = user_group.getGroupId(group_name);
+    if(group_id == -1){
+        cout<<"不存在名称为"<<group_name<<"的用户组"<<endl;
+    }
+    // 获取user_name对应的ID
+    int user_id  = user_info.hasUser(user_name);
+    if(group_id == -1){
+        cout<<"不存在用户名为"<<user_name<<"的用户"<<endl;
+    }
+    // 修改对应的user磁盘结构对应的group_id
+    user_info.u_g_id[user_id] = group_id;
+    return;
+}
+void FileManager::changeFileMode(const char* file_name,int user_mode,int group_mode,int else_mode){
+    // 检查输入合法性
+    if(strlen(file_name)>FILE_NAME_SIZE){
+        cout<<"用户名或文件名称长度超出限制"<<endl;
+        return;
+    }
+    // 检查当前目录下是否存在这个文件
+    int f_pos = checkSameName(file_name,"file", false);
+    if(f_pos == -1){
+        cout<<"当前目录不存在名为file_name的文件"<<endl;
+        return;
+    }
+    // 获得当前文件的Inode
+    Inode inode;
+    my_file_system.readInode(inode,present_directory.d_inode_num[f_pos]);
+    inode.i_permission = 0;
+    switch (user_mode) {
+        case 0:
+            break;
+        case 1: // 只读
+            inode.i_permission |= Inode::OWNER_R;
+            break;
+        case 2: // 读写
+            inode.i_permission |= (Inode::OWNER_R|Inode::OWNER_W);
+            break;
+        case 3: // 读写+可执行
+            inode.i_permission |= (Inode::OWNER_R|Inode::OWNER_W|Inode::OWNER_E);
+            break;
+    }
+    switch (group_mode) {
+        case 0:
+            break;
+        case 1: // 只读
+            inode.i_permission |= Inode::GROUP_R;
+            break;
+        case 2: // 读写
+            inode.i_permission |= (Inode::GROUP_R|Inode::GROUP_W);
+            break;
+        case 3: // 读写+可执行
+            inode.i_permission |= (Inode::GROUP_R|Inode::GROUP_W|Inode::GROUP_E);
+            break;
+    }
+    switch (else_mode) {
+        case 0:
+            break;
+        case 1: // 只读
+            inode.i_permission |= Inode::ELSE_R;
+            break;
+        case 2: // 读写
+            inode.i_permission |= (Inode::ELSE_R|Inode::ELSE_W);
+            break;
+        case 3: // 读写+可执行
+            inode.i_permission |= (Inode::ELSE_R|Inode::ELSE_W|Inode::ELSE_E);
+            break;
+    }
+    my_file_system.writeInode(inode);
+
+};
+
+bool FileManager::deleteUser(const char* user_name){
+    // 先检查当前用户是否为root用户
+    if(strcmp(present_user.u_name,"root")!=0){
+        cout<<"Permission denied,只有root用户才能删除用户"<<endl;
+        return false;
+    }
+    if(strcmp(user_name,"root")==0){
+        cout<<"不能删除root用户"<<endl;
+        return false;
+    }
+    // 检查user_name是否合法
+    if(strlen(user_name)>USER_NAME_SIZE){
+        cout<<"用户名称长度超出限制"<<endl;
+        return false;
+    }
+    //
+    UserInfo user_info;
+    my_file_system.readBlock((char*)& user_info,USER_INFO_BLK_NUM);
+    int del_user_id = user_info.delUser(user_name);
+    if(del_user_id == -1){
+        cout<<"删除失败,系统中不存在名为"<<user_name<<"的用户"<<endl;
+    }
+    // 写回磁盘
+    my_file_system.writeBlock((char*)& user_info,USER_INFO_BLK_NUM);
+    // 遍历打开文件表，对所有删除的用户的文件进行释放
+    for(int i=0;i<OpenFileTable::OPEN_FILE_NUM;i++){
+        // 如果对应的打开文件结构属于被删除的用户，那么对其进行释放
+        if(my_open_file_table.o_files[i].f_uid == del_user_id)
+            my_open_file_table.freeFile(i);
+    }
+    return true;
+};
+
+// 改变当前目录下名为file_name的文件的用户组为group_name
+void FileManager::changeFileGroup(const char* file_name,const char* group_name){
+    // 先检查当前用户是否为root用户
+    if(strcmp(present_user.u_name,"root")!=0){
+        cout<<"Permission denied,只有root用户才能更改文件的用户组"<<endl;
+        return;
+    }
+    // 检查输入合法性
+    if(strlen(group_name)>GROUP_NAME_SIZE|| strlen(file_name)>FILE_NAME_SIZE){
+        cout<<"用户名或文件名称长度超出限制"<<endl;
+        return;
+    }
+    // 检查当前目录下是否存在这个文件
+    int f_pos = checkSameName(file_name,"file", false);
+    if(f_pos == -1){
+        cout<<"当前目录不存在名为file_name的文件"<<endl;
+        return;
+    }
+    GroupInfo user_group;
+    my_file_system.readBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+    // 获取group_name对应的ID
+    int group_id = user_group.getGroupId(group_name);
+    if(group_id == -1){
+        cout<<"不存在名称为"<<group_name<<"的用户组"<<endl;
+    }
+    // 获得当前文件的Inode
+    Inode inode;
+    my_file_system.readInode(inode,present_directory.d_inode_num[f_pos]);
+    // 修改对应的group_id
+    inode.i_gid = group_id;
+    // 写回磁盘
+    my_file_system.writeInode(inode);
+};
+void FileManager::su(const char* user_name,const char* pwd){
+    // 检查user_name 和 pwd的长度
+    if(strlen(user_name)>USER_NAME_SIZE || strlen(pwd)> USER_PWD_SIZE){
+        cout<<"用户名或密码长度超出限制"<<endl;
+    }
+    // 读取数据
+    UserInfo user_info;
+    my_file_system.readBlock((char*)& user_info,USER_INFO_BLK_NUM);
+    GroupInfo user_group;
+    my_file_system.readBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+
+    int user_id = user_info.login(user_name,pwd);
+    if(user_id ==-1){
+        cout<<"用户名或密码错误"<<endl;
+        return;
+    }
+    // 获取一个新的用户对象,赋值给当前用户对象
+    present_user = getNewUser(user_id,user_info, user_group);
+};
+void FileManager::whoAmI(){
+    cout<<"user_name:"<<present_user.u_name<<endl;
+    cout<<"group_name:"<<present_user.g_name<<endl;
+};
+
+
+/* 对系统进行格式化的操作 */
+void FileManager::formatSystem() {
+    my_file_system.FormatDisk();//格式化磁盘
+    // 申请一个盘块
+    int new_blk_num = my_file_system.AllocBlock();
+    // 申请一个Inode
+    Inode root_inode;
+    my_file_system.AllocInode(root_inode);
+    // Inode 初始化操作
+    root_inode.i_mode = Inode::INODE_DIRECTORY;
+    root_inode.i_addr[0] = new_blk_num;//新申请的目录盘块号
+    cout<<"root_blk_num"<<new_blk_num<<endl;
+
+    // Inode 权限和用户部分
+
+    //创建根目录
+    Directory root;
+    root.inode_num = root_inode.i_number;
+    root_inode_num = root_inode.i_number;//全局变量记录
+    root.parent_inode_num = -1;// -1代表不存在父目录
+    strcpy(root.directory_name,"/");
+    // 当前目录为root
+    present_directory = root;
+    my_file_system.writeBlock((char*)&present_directory,new_blk_num);
+    // root 写入磁盘块
+    my_file_system.writeBlock((char*)&present_directory,new_blk_num);
+    // Inode 写入磁盘更新
+    my_file_system.writeInode(root_inode);
+
+    // 申请2个块给UserInfo
+    int user_info_blk_num = my_file_system.AllocBlock();
+    int group_info_blk_num = my_file_system.AllocBlock();
+
+    cout<<"user_info_blk_num"<<user_info_blk_num<<endl;
+    cout<<"group_info_blk_num"<<group_info_blk_num<<endl;
+
+    UserInfo user_info;
+    GroupInfo group_info;
+    // 创建两个用户组 root_group 与 user_group
+    int root_group_id = group_info.addGroup("root_group");
+    int user_group_id = group_info.addGroup("user_group");
+
+    cout<<root_group_id<<endl;
+    cout<<user_group_id<<endl;
+    // 创建了root用户
+    int root_user_id = user_info.addUser("root","123456",0);
+    User root_user;
+    root_user.u_id = root_user_id;
+    root_user.g_id = root_group_id;
+    strcpy(root_user.u_name,"root");
+    strcpy(root_user.g_name,"root_group");
+    present_user = root_user;
+    // 写回信息
+    my_file_system.writeBlock((char*)&user_info,USER_INFO_BLK_NUM);
+    my_file_system.writeBlock((char*)&group_info,GROUP_INFO_BLK_NUM);
+
+    // 创建子目录
+    this->createDirectory("bin");
+    this->createDirectory("home");
+    this->createDirectory("etc");
+    this->createDirectory("dev");
+}
+
+// 工具函数输出程序的
+string outputMode(int permission){
+    string res="";
+    if(permission & Inode::OWNER_R) res +="r";
+    else res+="-";
+    if(permission & Inode::OWNER_W) res +="w";
+    else res+="-";
+    if(permission & Inode::OWNER_E) res +="x";
+    else res+="-";
+
+    res+=" ";
+
+    if(permission & Inode::GROUP_R) res +="r";
+    else res+="-";
+    if(permission & Inode::GROUP_W) res +="w";
+    else res+="-";
+    if(permission & Inode::GROUP_E) res +="x";
+    else res+="-";
+
+    res+=" ";
+
+    if(permission & Inode::ELSE_R) res +="r";
+    else res+="-";
+    if(permission & Inode::ELSE_W) res +="w";
+    else res+="-";
+    if(permission & Inode::ELSE_E) res +="x";
+    else res+="-";
+
+    return res;
+}
+/* 展示当前目录INODE节点的文件项 */
+void FileManager::ls(bool detail) {
+    if(detail){
+        cout<<setw(15)<<setiosflags(ios::left)<<"type";
+        cout<<setw(20)<<"Name:";
+        cout<<setw(15)<<"Mode";
+        cout<<setw(10)<<"Size";
+        cout<<setw(20)<<"Altered time";
+        cout<<endl;
+
+        for (int i = 0; i <DIRECTORY_SIZE; ++i) {
+            if(strlen(present_directory.d_file_name[i])){
+                Inode inode;
+                my_file_system.readInode(inode,present_directory.d_inode_num[i]);
+                // 输出文件细节
+                cout<<setw(15)<<((inode.i_mode==Inode::INODE_FILE)?"file":"directory");
+                cout<<setw(20)<<present_directory.d_file_name[i];
+                cout<<setw(15)<<outputMode(inode.i_permission);
+                cout<<setw(10)<<inode.i_size;
+                cout<<setw(20)<<put_time(localtime(&inode.i_time),"%Y-%m-%d %H.%M.%S");
+                cout<<" "<<endl;
+
+            }
+        }
+    }
+    else{
+        for (int i = 0; i <DIRECTORY_SIZE; ++i) {
+            if(strlen(present_directory.d_file_name[i])){
+                cout<<present_directory.d_file_name[i]<<"  ";
+            }
+        }
+        cout<<endl;
+    }
+}
+
+void FileManager::boost() {
+    root_inode_num = ROOT_INODE_NUM;
+    my_file_system.readBlock((char*)&present_directory,ROOT_BLK_NUM);
+    present_user.u_id = ROOT_USER_ID;
+    present_user.g_id = ROOT_GROUP_ID;
+    strcpy(present_user.u_name,"root");
+    strcpy(present_user.g_name,"root_group");
+    // 其他的全局变量都通过构造函数完成了初始化
 }

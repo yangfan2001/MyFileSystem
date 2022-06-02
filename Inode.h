@@ -60,15 +60,17 @@ public:
     };
 
     enum InodePermission {//分为文件主、文件主同组和其他用户
-        OWNER_R = 0400,
-        OWNER_W = 0200,
-        OWNER_E = 0100,
-        GROUP_R = 040,
-        GROUP_W = 020,
-        GROUP_E = 010,
-        ELSE_R = 04,
-        ELSE_W = 02,
-        ELSE_E = 01,
+
+        OWNER_R = 0b1,
+        OWNER_W = 0b10,
+        OWNER_E = 0b100,
+        GROUP_R = 0b1000,
+        GROUP_W = 0b10000,
+        GROUP_E = 0b100000,
+        ELSE_R  = 0b1000000,
+        ELSE_W  = 0b10000000,
+        ELSE_E  = 0b100000000,
+
     };
 
     static const int ADDRESS_PER_INDEX_BLOCK = BLOCK_SIZE / sizeof(int);	/* 每个间接索引表(或索引块)包含的物理盘块号 */
@@ -126,6 +128,7 @@ public:
     ~Directory();
     // 拷贝dir到自身
     void copyDirectory(Directory dir);
+
 };
 
 class File{
@@ -135,9 +138,8 @@ public:
     {
         R_FLAG = 0x1,			/* 读请求类型 */
         W_FLAG = 0x2,			/* 写请求类型 */
-        RW_FLAG = 0x3 /* 读写请求类型 */
+        RW_FLAG = 0x3           /* 读写请求类型 */
     };
-
     /* Functions */
 public:
     /* Constructors */
@@ -148,7 +150,6 @@ public:
 
     /* Member */
     // unsigned int f_flag;		/* 对打开文件的读、写操作要求 */
-
     int f_uid; // 打开文件user_id
     Inode*	f_inode;			/* 指向打开文件的内存Inode指针 */
     int f_inode_num; // 打开文件的磁盘inode号
