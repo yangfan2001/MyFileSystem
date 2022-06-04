@@ -32,6 +32,7 @@ void DiskInode::copyInode(Inode inode) {
     this->d_permission = inode.i_permission;
     this->d_mode = inode.i_mode;
     this->d_nlink = inode.i_nlink;
+    this->d_time = inode.i_time;
     memcpy(this->d_addr,inode.i_addr,sizeof(this->d_addr));
 }
 
@@ -63,6 +64,7 @@ void Inode::copyDiskInode(DiskInode diskInode) {
     this->i_uid = diskInode.d_uid;
     this->i_gid = diskInode.d_gid;
     this->i_size = diskInode.d_size;
+    this->i_time = diskInode.d_time;
     memcpy(this->i_addr,diskInode.d_addr,sizeof(diskInode.d_addr));
 }
 

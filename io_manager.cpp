@@ -35,6 +35,8 @@ void IOManager::writeSuperBlock(SuperBlock &superBlock) {
 }
 
 void IOManager::readInode(DiskInode &diskInode, int num) {
+    if(num>=INODE_NUM)
+        return;
     openFile();// open files
     fd.seekg(INODE_POS*BLOCK_SIZE+num*sizeof(diskInode),ios::cur); // 找到写入指针的正确位置
     fd.read((char*)&(diskInode),sizeof(diskInode)); // 读出Inode
@@ -42,6 +44,8 @@ void IOManager::readInode(DiskInode &diskInode, int num) {
 }
 
 void IOManager::writeInode(DiskInode &diskInode, int num) {
+    if(num>=INODE_NUM)
+        return;
     openFile();// open files
     fd.seekg(INODE_POS*BLOCK_SIZE+num*sizeof(diskInode),ios::cur); // 找到写入指针的正确位置
     fd.write((char*)&(diskInode),sizeof(diskInode)); // 写入SuperBlock
@@ -49,6 +53,8 @@ void IOManager::writeInode(DiskInode &diskInode, int num) {
 }
 // 写入一个Block，一次写入512 byte
 void IOManager::writeBlock(char *content, int blknum) {
+    if(blknum>=BLOCK_NUM-1)
+        return;
     openFile();// open files
     fd.seekg(BLOCK_POS*BLOCK_SIZE+(blknum-1)*BLOCK_SIZE,ios::cur); // 找到写入指针的正确位置
     fd.write(content,BLOCK_SIZE); // 写入SuperBlock
@@ -57,6 +63,8 @@ void IOManager::writeBlock(char *content, int blknum) {
 
 // 读一个Block，一次读512 byte
 void IOManager::readBlock(char *content, int blknum) {
+    if(blknum>=BLOCK_NUM-1)
+        return;
     openFile();// open files
     fd.seekg(BLOCK_POS*BLOCK_SIZE+(blknum-1)*BLOCK_SIZE,ios::cur); // 找到写入指针的正确位置
     fd.read(content,BLOCK_SIZE); // 写入SuperBlock
@@ -132,6 +140,8 @@ const char* IOManager::readFile(string file_name,int length){
     return NULL;
 };
 void IOManager::writeFile(string file_name,const char* buffer){
-
+    ofstream file(file_name,ios::out|ios::binary);
+    file<<buffer;
+    file.close();
 };
 

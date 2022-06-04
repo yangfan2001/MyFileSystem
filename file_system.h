@@ -41,6 +41,8 @@ public:
 
     const char* readFile(string file_name,int length);
 
+    void writeFile(string file_name, const char* content);
+
 
 };
 #endif //MYFILESYSTEM_FILE_SYSTEM_H

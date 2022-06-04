@@ -242,12 +242,13 @@ int FileManager::openFile(const char* file_name,int mode){
 
 /* 关闭一个文件 */
 void FileManager::closeFile(int fd){
+    int f_uid = my_open_file_table.o_files[fd].f_uid;
     int closeSuccess = my_open_file_table.freeFile(fd);
     if(!closeSuccess){
         cout<<"文件关闭失败,不存在fd为:"<<fd<<"的文件"<<endl;
         return;
     }
-    if(my_open_file_table.o_files[fd].f_uid!=present_user.u_id){
+    if(f_uid!=present_user.u_id){
         cout<<"文件关闭失败，不能关闭其他用户打开的文件"<<endl;
         return;
     }
@@ -314,6 +315,7 @@ int FileManager::writeFile(int fd, string in_file_name, int length) {
          * buffer+blk_offset起始 byte_nums 个字节
          * */
         memcpy(buffer+blk_offset,content+write_count,byte_nums);
+        //cout<<"physical_blk_num"<<physical_blk_num<<endl;
         my_file_system.writeBlock(buffer,physical_blk_num);
         // 写完了，对对应的变量进行操作
         file_offset += byte_nums; // 文件指针向前移动byte_nums 个字节
@@ -391,11 +393,9 @@ int FileManager::readFile(int fd,string out_file_name,int length){
     content[read_count] = '\0';
     if(out_file_name.length() == 0){
         cout<<content<<endl;
-
     }
     else{
-        cout<<123<<endl;
-        cout<<content<<endl;
+        my_file_system.writeFile(out_file_name,content);
     }
 
     return read_count;
@@ -463,6 +463,8 @@ void FileManager::createDirectory(const char* directory_name){
     // 对Inode的数据进行对应的赋值
     new_inode.i_addr[0] = new_blk_num;
     new_inode.i_mode = Inode::INODE_DIRECTORY;
+    new_inode.i_uid = present_user.u_id;
+    new_inode.i_gid = present_user.g_id;
 
     // 所有者具有读写、可执行权限
     new_inode.i_permission |=(Inode::OWNER_R|Inode::OWNER_W|Inode::OWNER_E);
@@ -692,7 +694,7 @@ void FileManager::modifyUserGroup(const char *user_name, const char *group_name)
         return;
     }
     // 不能修改root的用户组
-    if(strcmp(user_name,"root")){
+    if(strcmp(user_name,"root")==0){
         cout<<"不能修改root用户的用户组"<<endl;
         return;
     }
@@ -700,18 +702,27 @@ void FileManager::modifyUserGroup(const char *user_name, const char *group_name)
     UserInfo user_info;
     GroupInfo user_group;
     my_file_system.readBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+    my_file_system.readBlock((char*)&user_info,USER_INFO_BLK_NUM);
+
     // 获取group_name对应的ID
     int group_id = user_group.getGroupId(group_name);
     if(group_id == -1){
         cout<<"不存在名称为"<<group_name<<"的用户组"<<endl;
+        return;
     }
     // 获取user_name对应的ID
     int user_id  = user_info.hasUser(user_name);
-    if(group_id == -1){
+    if(user_id == -1){
         cout<<"不存在用户名为"<<user_name<<"的用户"<<endl;
+        return;
     }
     // 修改对应的user磁盘结构对应的group_id
     user_info.u_g_id[user_id] = group_id;
+    my_file_system.writeBlock((char*)&user_info,USER_INFO_BLK_NUM);
+    my_file_system.writeBlock((char*)&user_group,GROUP_INFO_BLK_NUM);
+
+    cout<<"修改了"<<user_name<<"的用户组为"<<group_name<<endl;
+
     return;
 }
 void FileManager::changeFileMode(const char* file_name,int user_mode,int group_mode,int else_mode){
@@ -866,7 +877,7 @@ void FileManager::whoAmI(){
 
 /* 对系统进行格式化的操作 */
 void FileManager::formatSystem() {
-    my_file_system.FormatDisk();//格式化磁盘
+    my_file_system.FormatDisk();//格式化文件卷
     // 申请一个盘块
     int new_blk_num = my_file_system.AllocBlock();
     // 申请一个Inode
@@ -875,7 +886,8 @@ void FileManager::formatSystem() {
     // Inode 初始化操作
     root_inode.i_mode = Inode::INODE_DIRECTORY;
     root_inode.i_addr[0] = new_blk_num;//新申请的目录盘块号
-    cout<<"root_blk_num"<<new_blk_num<<endl;
+    if(debug)
+        cout<<"root_blk_num"<<new_blk_num<<endl;
 
     // Inode 权限和用户部分
 
@@ -896,18 +908,20 @@ void FileManager::formatSystem() {
     // 申请2个块给UserInfo
     int user_info_blk_num = my_file_system.AllocBlock();
     int group_info_blk_num = my_file_system.AllocBlock();
-
-    cout<<"user_info_blk_num"<<user_info_blk_num<<endl;
-    cout<<"group_info_blk_num"<<group_info_blk_num<<endl;
+    if(debug)
+        cout<<"user_info_blk_num"<<user_info_blk_num<<endl;
+    if(debug)
+        cout<<"group_info_blk_num"<<group_info_blk_num<<endl;
 
     UserInfo user_info;
     GroupInfo group_info;
     // 创建两个用户组 root_group 与 user_group
     int root_group_id = group_info.addGroup("root_group");
     int user_group_id = group_info.addGroup("user_group");
-
-    cout<<root_group_id<<endl;
-    cout<<user_group_id<<endl;
+    if(debug)
+        cout<<root_group_id<<endl;
+    if(debug)
+        cout<<user_group_id<<endl;
     // 创建了root用户
     int root_user_id = user_info.addUser("root","123456",0);
     User root_user;
@@ -925,6 +939,32 @@ void FileManager::formatSystem() {
     this->createDirectory("home");
     this->createDirectory("etc");
     this->createDirectory("dev");
+    // 进入home里面
+    this->openDirectory("home");
+    this->createDirectory("texts");
+    this->createDirectory("reports");
+    this->createDirectory("photos");
+    // 创建文件texts
+    this->openDirectory("/home/texts");
+    this->creatFile("text");
+    int text_fd = this->openFile("text",File::RW_FLAG);
+    this->writeFile(text_fd,"ReadMe.txt",100000);
+    this->closeFile(text_fd);
+    // 创建文件reports
+    this->openDirectory("/home/reports");
+    this->creatFile("report");
+    int report_fd = this->openFile("report",File::RW_FLAG);
+    this->writeFile(report_fd,"report.md",100000);
+    this->closeFile(report_fd);
+    // 创建文件
+    this->openDirectory("/home/photos");
+    this->creatFile("photo");
+    int photo_fd = this->openFile("photo",File::RW_FLAG);
+    this->writeFile(photo_fd,"photo.jpeg",100000);
+    this->closeFile(photo_fd);
+    // 回到root
+    this->openDirectory("/");
+
 }
 
 // 工具函数输出程序的
@@ -961,6 +1001,8 @@ string outputMode(int permission){
 void FileManager::ls(bool detail) {
     if(detail){
         cout<<setw(15)<<setiosflags(ios::left)<<"type";
+        cout<<setw(10)<<"uid";
+        cout<<setw(10)<<"gid";
         cout<<setw(20)<<"Name:";
         cout<<setw(15)<<"Mode";
         cout<<setw(10)<<"Size";
@@ -973,6 +1015,8 @@ void FileManager::ls(bool detail) {
                 my_file_system.readInode(inode,present_directory.d_inode_num[i]);
                 // 输出文件细节
                 cout<<setw(15)<<((inode.i_mode==Inode::INODE_FILE)?"file":"directory");
+                cout<<setw(10)<<inode.i_uid;
+                cout<<setw(10)<<inode.i_gid;
                 cout<<setw(20)<<present_directory.d_file_name[i];
                 cout<<setw(15)<<outputMode(inode.i_permission);
                 cout<<setw(10)<<inode.i_size;

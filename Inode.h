@@ -128,7 +128,6 @@ public:
     ~Directory();
     // 拷贝dir到自身
     void copyDirectory(Directory dir);
-
 };
 
 class File{

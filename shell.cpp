@@ -27,15 +27,90 @@ vector<string> stringSplit(string str)
     }
     return v;
 }
+void getHelp(string cmd_head){
+    if(cmd_head=="fformat"){
+        return;
+    }
+    else if(cmd_head=="ls"){
+        cout<<"参数错误"<<endl;
+        cout<<"ls or ls -l"<<endl;
+    }
+    else if(cmd_head =="pwd"){
+       return;
+    }
+    else if(cmd_head=="cd"){
+        cout<<"参数错误"<<endl;
+        cout<<"cd .. or cd /a/b or cd a/b"<<endl;
+    }
+    else if(cmd_head=="mkdir"){
+        cout<<"参数错误"<<endl;
+        cout<<"cd .. or cd /a/b or cd a/b"<<endl;
+    }
+    else if(cmd_head=="fcreat"){
+        cout<<"参数错误"<<endl;
+        cout<<"fcreat [file_name]"<<endl;
+    }
+    else if(cmd_head=="fopen"){
+        cout<<"参数错误"<<endl;
+        cout<<"fopen [file_name] [mode](-r -w -rw)"<<endl;
+    }
+    else if(cmd_head=="fclose"){
+        cout<<"参数错误"<<endl;
+        cout<<"fclose [file_name]"<<endl;
+    }
+    else if(cmd_head=="fread"){
+        cout<<"参数错误"<<endl;
+        cout<<"fread [fd] [-o out_file_name] [length]"<<endl;
+    }
+    else if(cmd_head=="fwrite"){
+        cout<<"参数错误"<<endl;
+        cout<<"fwrite [fd] [in_file_name] [length]"<<endl;
+    }
+    else if(cmd_head=="fseek"){
+        cout<<"参数错误"<<endl;
+        cout<<"fseek [fd] [offset] [ptrname](0:start 1:present 2:end)"<<endl;
+    }
+    else if(cmd_head=="fdelete"){
+        cout<<"参数错误"<<endl;
+        cout<<"fdelete [file_name]"<<endl;
+    }
+    else if(cmd_head == "groupadd"){
+        cout<<"参数错误"<<endl;
+        cout<<"groupadd [group_name]"<<endl;
+    }
+    else if(cmd_head == "usermod"){
+        cout<<"参数错误"<<endl;
+        cout<<"usermod [user_name] [group_name]"<<endl;
+    }
+    else if(cmd_head == "chmod"){
+        cout<<"参数错误"<<endl;
+        cout<<"chmod [owner_mode] [group_mode] [else_mode](mode:0 1 2 3)"<<endl;
+    }
+    else if(cmd_head == "userdel"){
+        cout<<"参数错误"<<endl;
+        cout<<"userdel [user_name]"<<endl;
+    }
+    else if(cmd_head == "chgrp"){
+        cout<<"参数错误"<<endl;
+        cout<<"chgrp [file_name] [group_name]"<<endl;
+    }
+    else if(cmd_head == "useradd"){
+        cout<<"参数错误"<<endl;
+        cout<<"useradd [user_name] [pwd]"<<endl;
+    }
+    else if(cmd_head == "su"){
+        cout<<"参数错误"<<endl;
+        cout<<"su [user_name] [pwd]"<<endl;
+    }
 
-
+}
 bool shell::shellReact(string cmd) {
     std::vector<std::string> cmd_vector = stringSplit(cmd);
-    if(!cmd.size()) return true;
+    if(!cmd.size())
+        return true;
     string cmd_head = cmd_vector[0];
     if(cmd_head=="fformat"){
         my_file_manager.formatSystem();
-        cout<<"fformat react"<<endl;
     }
     else if(cmd_head=="ls"){
         if(cmd_vector.size()==1){
@@ -46,27 +121,22 @@ bool shell::shellReact(string cmd) {
         if(arg1 == "-l")
             my_file_manager.ls(true);
         else
-            cout<<"错误的参数"<<endl;
+            getHelp("ls");
     }
     else if(cmd_head =="pwd"){
         my_file_manager.pwd();
     }
     else if(cmd_head=="cd"){
         if(cmd_vector.size()==1){
+            getHelp("cd");
             return true;
         }
         string path = cmd_vector[1];
         my_file_manager.openDirectory(path.c_str());
     }
-    else if(cmd_head=="rm"){
-        if(cmd_vector.size()==1){
-            return true;
-        }
-        cout<<"rm react need to be completed!"<<endl;
-    }
     else if(cmd_head=="mkdir"){
-        cout<<cmd_vector.size()<<endl;
         if(cmd_vector.size()==1){
+            getHelp("mkdir");
             return true;
         }
         string directory_name = cmd_vector[1];
@@ -74,6 +144,7 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head=="fcreat"){
         if(cmd_vector.size()==1){
+            getHelp("fcreat");
             return true;
         }
         string file_name = cmd_vector[1];
@@ -81,11 +152,12 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head=="fopen"){
         if(cmd_vector.size()<=2){
+            getHelp("fopen");
             return true;
         }
         string mode_str = cmd_vector[2];
         if(mode_str!="-r" && mode_str!="-w" && mode_str!="-rw"){
-            cout<<"fopen读写参数错误"<<endl;
+            getHelp("fopen");
             return true;
         }
         int mode;
@@ -93,7 +165,7 @@ bool shell::shellReact(string cmd) {
             mode = File::R_FLAG;
         else if(mode_str == "-w" )
             mode = File::W_FLAG;
-        else
+        else if(mode_str == "-rw")
             mode = File::RW_FLAG;
         string file_name = cmd_vector[1];
         int fd = my_file_manager.openFile(file_name.c_str(),mode);
@@ -101,28 +173,38 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head=="fclose"){
         if(cmd_vector.size()==1){
+            getHelp("fclose");
             return true;
         }
         int fd = stoi(cmd_vector[1]);
         my_file_manager.closeFile(fd);
-        cout<<"fread react"<<endl;
     }
     else if(cmd_head=="fread"){
-        if(cmd_vector.size()<=2)
+        if(cmd_vector.size()<=2){
+            getHelp("fread");
             return true;
+        }
         int fd = stoi(cmd_vector[1]);
         string file_name = "";
-        int length = stoi(cmd_vector[3]);
-
+        int length;
+        if(cmd_vector[2]=="-o") {
+            file_name = cmd_vector[3];
+            length = stoi(cmd_vector[4]);
+        }
+        else{
+            file_name = "";
+            length = stoi(cmd_vector[2]);
+        }
         int read_byte_num = my_file_manager.readFile(fd,file_name,length);
         if(read_byte_num == -1)
             return true;
         cout<<"成功读入了"<<read_byte_num<<"个字节"<<endl;
-        cout<<"fread react"<<endl;
     }
     else if(cmd_head=="fwrite"){
-        if(cmd_vector.size()<=2)
+        if(cmd_vector.size()<=2){
+            getHelp("fwrite");
             return true;
+        }
         int fd = stoi(cmd_vector[1]);
         string file_name = cmd_vector[2];
         int length = stoi(cmd_vector[3]);
@@ -130,11 +212,12 @@ bool shell::shellReact(string cmd) {
         if(write_byte_num == -1)
             return true;
         cout<<"成功写入了"<<write_byte_num<<"个字节"<<endl;
-        cout<<"fwrite react"<<endl;
     }
     else if(cmd_head=="fseek"){
-        if(cmd_vector.size()<=2)
+        if(cmd_vector.size()<=2){
+            getHelp("fseek");
             return true;
+        }
         int fd = stoi(cmd_vector[1]);
         int offset = stoi(cmd_vector[2]);
         int ptrname = stoi(cmd_vector[3]);
@@ -143,10 +226,11 @@ bool shell::shellReact(string cmd) {
             cout<<"fseek"<<"参数错误"<<endl;
             return true;
         }
-        cout<<"fseek react"<<endl;
+        my_file_manager.seekFile(fd,offset,ptrname);
     }
     else if(cmd_head=="fdelete"){
         if(cmd_vector.size()==1){
+            getHelp("fdelete");
             return true;
         }
         string file_name = cmd_vector[1];
@@ -154,6 +238,7 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head == "groupadd"){
         if(cmd_vector.size()==1){
+            getHelp("groupadd");
             return true;
         }
         string group_name = cmd_vector[1];
@@ -164,26 +249,44 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head == "usermod"){
         if(cmd_vector.size()<=2){
-            // 参数错误
+            getHelp("usermod");
             return true;
         }
         string user_name = cmd_vector[1];
         string group_name = cmd_vector[2];
-        my_file_manager.changeFileGroup(user_name.c_str(),group_name.c_str());
+        my_file_manager.modifyUserGroup(user_name.c_str(),group_name.c_str());
 
     }
     else if(cmd_head == "chmod"){
         if(cmd_vector.size()<=4){
+            getHelp("chmod");
             return true;
         }
         string file_name = cmd_vector[1];
         string user_mode = cmd_vector[2];
         string group_mode = cmd_vector[3];
         string else_mode = cmd_vector[4];
+
+        if(user_mode!="0" && user_mode!="1" && user_mode!="2" && user_mode!="3"){
+            getHelp("chmod");
+            return true;
+        }
+        if(group_mode!="0" && group_mode!="1" && group_mode!="2" && group_mode!="3"){
+            getHelp("chmod");
+            return true;
+        }
+        if(else_mode!="0" && else_mode!="1" && else_mode!="2" && else_mode!="3"){
+            getHelp("chmod");
+            return true;
+        }
+        my_file_manager.changeFileMode(file_name.c_str(),
+                                       stoi(user_mode),stoi(group_mode),
+                                       stoi(else_mode));
+
     }
     else if(cmd_head == "userdel"){
         if(cmd_vector.size()<=1){
-            return true;
+            getHelp("userdel");
         }
         string user_name = cmd_vector[1];
         if(my_file_manager.deleteUser(user_name.c_str())){
@@ -192,7 +295,7 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head == "chgrp"){
         if(cmd_vector.size()<=2){
-            // 参数错误
+            getHelp("chgrp");
             return true;
         }
         string file_name = cmd_vector[1];
@@ -201,7 +304,7 @@ bool shell::shellReact(string cmd) {
     }
     else if(cmd_head == "useradd"){
         if(cmd_vector.size()<=2){
-            // 参数错误
+            getHelp("useradd");
             return true;
         }
         string user_name = cmd_vector[1];
@@ -218,7 +321,6 @@ bool shell::shellReact(string cmd) {
         string user_name = cmd_vector[1];
         string pwd = cmd_vector[2];
         my_file_manager.su(user_name.c_str(),pwd.c_str());
-
     }
     else if(cmd_head == "whoami"){
         my_file_manager.whoAmI();
@@ -244,6 +346,8 @@ bool shell::shellReact(string cmd) {
 }
 
 void shell::loop() {
+    // 系统的初始化引导函数
+    my_file_manager.boost();
     while (1) {
         string cmd, single_cmd;
         cout <<present_directory.directory_name << " " << present_user.u_name << "$ ";

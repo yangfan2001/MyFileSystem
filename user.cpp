@@ -92,7 +92,7 @@ const char* GroupInfo::getGroupName(int group_id){
 
 int GroupInfo::getGroupId(const char* group_name){
     for(int i=0;i<GROUP_NUM;i++){
-        if(strcpy(this->g_name[i],group_name)==0)
+        if(strcmp(this->g_name[i],group_name)==0)
             return i;
     }
     return -1;

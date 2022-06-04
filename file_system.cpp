@@ -32,7 +32,8 @@ int FileSystem::AllocBlock() {
 
     //写回SuperBlock
     my_io_manager.writeSuperBlock(superBlock);
-    cout<<"第"<<blk_num<<"号数据块被分配！！！"<<endl;
+    if(debug)
+        cout<<"第"<<blk_num<<"号数据块被分配！！！"<<endl;
     return blk_num;
 }
 
@@ -56,7 +57,8 @@ void FileSystem::FreeBlock(int blk_num) {
     }
     //写回SuperBlock
     my_io_manager.writeSuperBlock(superBlock);
-    cout<<"第"<<blk_num<<"号数据块被释放！！！"<<endl;
+    if(debug)
+        cout<<"第"<<blk_num<<"号数据块被释放！！！"<<endl;
 
 }
 
@@ -69,14 +71,25 @@ int FileSystem::AllocInode(Inode &inode){
     if(superBlock.s_ninode>0){//正常的分配
         superBlock.s_ninode--;
         Inode_num = superBlock.s_inode[superBlock.s_ninode];
-        cout<<Inode_num<<"号INODE被分配"<<endl;
+        if(debug)
+            cout<<Inode_num<<"号INODE被分配"<<endl;
     } //ninode为0
-
-    if(superBlock.s_ninode==0){
+    else{
         //扫描Inode区，搜索100个空闲的DiskInode，添加到superBlock上面
-        //...
-        cout<<"没INODE了，请联系作者修复一下这个bug";
-        return false;
+        for(int i=0;i<INODE_NUM;i++){
+            DiskInode tmp;
+            my_file_system.readInode(inode,0);
+            if(tmp.d_uid == -1){
+                superBlock.s_inode[superBlock.s_ninode] = i;
+                superBlock.s_ninode++;
+            }
+            if(superBlock.s_ninode == 100)
+                break;
+        }//遍历了所有Inode还是找不到一个空闲的Inode
+        if(superBlock.s_ninode == 0 )
+            return false;
+        superBlock.s_ninode--;
+        Inode_num = superBlock.s_inode[superBlock.s_ninode];
     }
     my_io_manager.writeSuperBlock(superBlock);
 
@@ -108,7 +121,8 @@ void FileSystem::FreeInode(int inode_num) {
     }
     //写回SuperBlock
     my_io_manager.writeSuperBlock(superBlock);
-    cout<<"释放了"<<inode_num<<"号磁盘Inode"<<endl;
+    if(debug)
+        cout<<"释放了"<<inode_num<<"号磁盘Inode"<<endl;
 }
 
 // format fileSystem and write it into disk
@@ -157,7 +171,8 @@ void FileSystem::FormatDisk() {
                 if(nfree==0) empty_manage_block[1] = 0;//作为标志位，说明后续不再有空闲块
                 my_io_manager.writeBlock((char*)&empty_manage_block,i);
             }
-            cout<<i<<"号块被作为了空闲管理块"<<endl;
+            if(debug)
+                cout<<i<<"号块被作为了空闲管理块"<<endl;
         }
         else{//为空闲块，那么写入一个空块
             my_io_manager.writeBlock(empty_block,i);
@@ -211,7 +226,12 @@ void FileSystem::updatePresentDirectory() {
     writeBlock((char*)&present_directory,blk_num);
 }
 
-
+// 读一个文件
 const char * FileSystem::readFile(string file_name, int length) {
     return my_io_manager.readFile(file_name,length);
+}
+
+// 写一个文件
+void FileSystem::writeFile(string file_name, const char *content) {
+    my_io_manager.writeFile(file_name,content);
 }

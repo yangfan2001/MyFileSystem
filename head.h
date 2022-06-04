@@ -10,7 +10,7 @@
 
 using namespace std;
 // define variable
-static const string DISK_NAME = "tmp.img";
+static const string DISK_NAME = "disk.img";
 // define the max of each value
 #define BLOCK_SIZE 512 // each block is 512 byte
 #define BLOCK_MAX_NUM 10000 // The MAX OF BLOCK NUM
@@ -36,5 +36,7 @@ static const string DISK_NAME = "tmp.img";
 #define ROOT_USER_ID 0 // root is the no 0 user of the system
 #define ROOT_GROUP_ID 0 // the root group id
 #define DEFAULT_USER_GROUP_ID 1 // the id of the default user group
+
+const bool debug = false;
 
 #endif //MYFILESYSTEM_HEAD_H
